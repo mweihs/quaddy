@@ -2,8 +2,9 @@
 
 // QuadTree
 //
-// Left mouse button to produce points to fill the QT.
-// SPACE toggles point visibility
+// Quadtree is filled with random points.
+// Move mouse to collect points in rectangular window around mouse pointer.
+// Use mouse wheel to increase/decrease size of window.
 // ESC to quit
 
 use raylib::prelude::*;
@@ -114,13 +115,32 @@ impl QTree {
       return false;
    }
 
+   fn query(&self, r: &Rect, found: &mut Vec<Point>, queries: &mut usize) {
+      *queries += 1;
+      if !self.boundary.intersects(r) {
+         return;
+      }
+
+      for p in &self.points {
+         if r.contains(p) {
+            found.push(p.clone())
+         }
+      }
+
+      if self.divided {
+         for c in self.children.as_ref().unwrap().iter() {
+            c.query(r, found, queries);
+         }
+      }
+   }
+
    fn show(&self, d: &mut RaylibDrawHandle, show_points: bool) {
       d.draw_rectangle_lines(
          (self.boundary.x - self.boundary.w) as i32,
          (self.boundary.y - self.boundary.h) as i32,
          self.boundary.w as i32 * 2,
          self.boundary.h as i32 * 2,
-         Color::RAYWHITE,
+         Color::GRAY,
       );
 
       if show_points {
@@ -140,7 +160,18 @@ impl QTree {
 fn main() {
    let boundary: Rect = Rect::new(300., 200., 300., 200.);
    let mut qt = QTree::new(boundary, 4);
-   let mut show_points = true;
+   let show_points = true;
+   let mut collected: Vec<Point> = vec![];
+   let mut window_size = 50;
+   let mut queries: usize = 0;
+
+   // fill qt with points
+   for _ in 0..500 {
+      qt.insert(Point::new(
+         rand::random_range(50..WIDTH - 50) as f32,
+         rand::random_range(50..HEIGHT - 50) as f32,
+      ));
+   }
 
    let (mut rl, thd) = raylib::init()
       .width(WIDTH)
@@ -152,24 +183,39 @@ fn main() {
    rl.set_target_fps(60);
 
    while !rl.window_should_close() {
-      if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
-         show_points = !show_points;
+      let zoom = rl.get_mouse_wheel_move();
+      if zoom != 0. {
+         window_size += zoom as i32 * 5;
       }
 
-      if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-         let pos = rl.get_mouse_position();
-         for _ in 0..4 {
-            qt.insert(Point::new(
-               pos.x + rand::random_range(-10..10) as f32,
-               pos.y + rand::random_range(-10..10) as f32,
-            ));
-         }
-      }
+      let pos = rl.get_mouse_position();
+      let rect: Rect = Rect {
+         x: pos.x,
+         y: pos.y,
+         w: window_size as f32,
+         h: window_size as f32,
+      };
+
+      qt.query(&rect, &mut collected, &mut queries);
 
       rl.draw(&thd, |mut d| {
          d.clear_background(Color::MIDNIGHTBLUE);
-         d.draw_fps(20, 20);
+         d.hide_cursor();
+         d.draw_text(format!("Queries: {queries}").as_str(), 20, 20, 20, Color::RAYWHITE);
          qt.show(&mut d, show_points);
+         d.draw_rectangle_lines(
+            pos.x as i32 - window_size,
+            pos.y as i32 - window_size,
+            window_size * 2,
+            window_size * 2,
+            Color::YELLOW,
+         );
+         for p in collected.iter() {
+            d.draw_circle(p.x as i32, p.y as i32, 2., Color::LIGHTCYAN);
+         }
       });
+
+      collected.clear();
+      queries = 0;
    }
 }
