@@ -1,67 +1,19 @@
-#![allow(dead_code)]
-
 // QuadTree
 //
 // Left mouse button to produce points to fill the QT.
 // SPACE toggles point visibility
-// ESC to quit
+// ESC or Q to quit
 
 use macroquad::prelude::*;
 
 const WIDTH: i32 = 600;
 const HEIGHT: i32 = 400;
-const N: usize = 10;
 
-#[derive(Clone)]
-struct Point {
-   x: f32,
-   y: f32,
-}
-
-impl Point {
-   fn new(x: f32, y: f32) -> Self {
-      Self { x, y }
-   }
-}
-
-//     +---------+
-//     |         |
-//     |    *    | |
-//     |  (x,y)  | | h
-//     +---------+ |
-//          ^^^^^^
-//            w
-struct Rect {
-   x: f32, // x of center point
-   y: f32, // y of center point
-   w: f32, // center to left/right side
-   h: f32, // center to top/bottom
-}
-
-impl Rect {
-   fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
-      Self { x, y, w, h }
-   }
-
-   fn contains(&self, p: &Point) -> bool {
-      p.x >= self.x - self.w
-         && p.x < self.x + self.w
-         && p.y >= self.y - self.h
-         && p.y < self.y + self.h
-   }
-
-   fn intersects(&self, rhs: &Self) -> bool {
-      !(rhs.x - rhs.w > self.x + self.w
-         || rhs.x + rhs.w < self.x - self.w
-         || rhs.y - rhs.h > self.y + self.h
-         || rhs.y + rhs.h < self.y - self.h)
-   }
-}
-
+#[derive(Default)]
 struct QTree {
    boundary: Rect,
    cap: usize,
-   points: Vec<Point>,
+   points: Vec<Vec2>,
    divided: bool,
    children: Option<Box<[QTree; 4]>>,
 }
@@ -71,9 +23,7 @@ impl QTree {
       Self {
          boundary,
          cap,
-         points: vec![],
-         divided: false,
-         children: None,
+         ..Default::default()
       }
    }
 
@@ -83,21 +33,21 @@ impl QTree {
       let w = self.boundary.w;
       let h = self.boundary.h;
       self.children = Some(Box::new([
-         QTree::new(Rect::new(x + w / 2., y - h / 2., w / 2., h / 2.), self.cap),
-         QTree::new(Rect::new(x - w / 2., y - h / 2., w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x, y, w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x + w / 2., y, w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x, y + h / 2., w / 2., h / 2.), self.cap),
          QTree::new(Rect::new(x + w / 2., y + h / 2., w / 2., h / 2.), self.cap),
-         QTree::new(Rect::new(x - w / 2., y + h / 2., w / 2., h / 2.), self.cap),
       ]));
       self.divided = true;
    }
 
-   fn insert(&mut self, p: Point) -> bool {
-      if !self.boundary.contains(&p) {
+   fn insert(&mut self, p: Vec2) -> bool {
+      if !self.boundary.contains(p) {
          return false;
       }
 
-      if self.points.len() < self.cap {
-         self.points.push(p.clone());
+      if self.points.len() <= self.cap {
+         self.points.push(p);
          return true;
       }
 
@@ -106,7 +56,7 @@ impl QTree {
       }
 
       for c in self.children.as_mut().unwrap().iter_mut() {
-         if c.insert(p.clone()) {
+         if c.insert(p) {
             return true;
          }
       }
@@ -116,10 +66,10 @@ impl QTree {
 
    fn show(&self, show_points: bool) {
       draw_rectangle_lines(
-         self.boundary.x - self.boundary.w,
-         self.boundary.y - self.boundary.h,
-         self.boundary.w * 2.,
-         self.boundary.h * 2.,
+         self.boundary.x,
+         self.boundary.y,
+         self.boundary.w,
+         self.boundary.h,
          1.,
          WHITE,
       );
@@ -149,7 +99,7 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-   let boundary: Rect = Rect::new(300., 200., 300., 200.);
+   let boundary: Rect = Rect::new(0., 0., WIDTH as f32, HEIGHT as f32);
    let mut qt = QTree::new(boundary, 4);
    let mut show_points = true;
 
@@ -164,7 +114,7 @@ async fn main() {
       if is_mouse_button_down(MouseButton::Left) {
          let (x, y) = mouse_position();
          for _ in 0..4 {
-            qt.insert(Point::new(
+            qt.insert(Vec2::new(
                x + rand::gen_range::<f32>(-10., 10.),
                y + rand::gen_range::<f32>(-10., 10.),
             ));

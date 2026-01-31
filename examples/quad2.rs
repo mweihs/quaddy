@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 // QuadTree
 //
 // Quadtree is filled with random points.
@@ -11,94 +9,12 @@ use macroquad::prelude::*;
 
 const WIDTH: i32 = 600;
 const HEIGHT: i32 = 400;
-const N: usize = 10;
 
-#[derive(Clone)]
-struct Point {
-   x: f32,
-   y: f32,
-}
-
-impl Point {
-   fn new(x: f32, y: f32) -> Self {
-      Self { x, y }
-   }
-}
-
-//     +---------+
-//     |         |
-//     |    *    | |
-//     |  (x,y)  | | h
-//     +---------+ |
-//          ^^^^^^
-//            w
-struct Rect {
-   x: f32, // x of center point
-   y: f32, // y of center point
-   w: f32, // center to left/right side
-   h: f32, // center to top/bottom
-}
-
-impl Rect {
-   fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
-      Self { x, y, w, h }
-   }
-
-   fn contains(&self, p: &Point) -> bool {
-      p.x >= self.x - self.w
-         && p.x < self.x + self.w
-         && p.y >= self.y - self.h
-         && p.y < self.y + self.h
-   }
-
-   fn intersects(&self, rhs: &Self) -> bool {
-      !(rhs.x - rhs.w > self.x + self.w
-         || rhs.x + rhs.w < self.x - self.w
-         || rhs.y - rhs.h > self.y + self.h
-         || rhs.y + rhs.h < self.y - self.h)
-   }
-}
-
-struct Circle {
-   x: f32,
-   y: f32,
-   r: f32,
-}
-
-impl Circle {
-   fn new(x: f32, y: f32, r: f32) -> Self {
-      Self { x, y, r }
-   }
-
-   fn contains(&self, p: &Point) -> bool {
-      let d = (p.x - self.x).powf(2.) + (p.y - self.y).powf(2.);
-      d <= self.r * self.r
-   }
-
-   fn intersects(&self, region: &Rect) -> bool {
-      let xdist = (region.x - self.x).abs();
-      let ydist = (region.y - self.y).abs();
-      let r = self.r;
-      let w = region.w / 2.;
-      let h = region.h / 2.;
-      let edges = (xdist - w).powf(2.) + (ydist - h).powf(2.);
-
-      if xdist > (r + w) || ydist > (r + h) {
-         return false;
-      }
-
-      if xdist <= w || ydist <= h {
-         return true;
-      }
-
-      return edges <= r * r;
-   }
-}
-
+#[derive(Default)]
 struct QTree {
    boundary: Rect,
    cap: usize,
-   points: Vec<Point>,
+   points: Vec<Vec2>,
    divided: bool,
    children: Option<Box<[QTree; 4]>>,
 }
@@ -108,9 +24,7 @@ impl QTree {
       Self {
          boundary,
          cap,
-         points: vec![],
-         divided: false,
-         children: None,
+         ..Default::default()
       }
    }
 
@@ -120,21 +34,21 @@ impl QTree {
       let w = self.boundary.w;
       let h = self.boundary.h;
       self.children = Some(Box::new([
-         QTree::new(Rect::new(x + w / 2., y - h / 2., w / 2., h / 2.), self.cap),
-         QTree::new(Rect::new(x - w / 2., y - h / 2., w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x, y, w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x + w / 2., y, w / 2., h / 2.), self.cap),
+         QTree::new(Rect::new(x, y + h / 2., w / 2., h / 2.), self.cap),
          QTree::new(Rect::new(x + w / 2., y + h / 2., w / 2., h / 2.), self.cap),
-         QTree::new(Rect::new(x - w / 2., y + h / 2., w / 2., h / 2.), self.cap),
       ]));
       self.divided = true;
    }
 
-   fn insert(&mut self, p: Point) -> bool {
-      if !self.boundary.contains(&p) {
+   fn insert(&mut self, p: Vec2) -> bool {
+      if !self.boundary.contains(p) {
          return false;
       }
 
       if self.points.len() < self.cap {
-         self.points.push(p.clone());
+         self.points.push(p);
          return true;
       }
 
@@ -143,7 +57,7 @@ impl QTree {
       }
 
       for c in self.children.as_mut().unwrap().iter_mut() {
-         if c.insert(p.clone()) {
+         if c.insert(p) {
             return true;
          }
       }
@@ -151,15 +65,15 @@ impl QTree {
       return false;
    }
 
-   fn query(&self, r: &Rect, found: &mut Vec<Point>, queries: &mut usize) {
+   fn query(&self, r: &Rect, found: &mut Vec<Vec2>, queries: &mut usize) {
       *queries += 1;
-      if !self.boundary.intersects(r) {
+      if self.boundary.intersect(*r).is_none() {
          return;
       }
 
       for p in &self.points {
-         if r.contains(p) {
-            found.push(p.clone())
+         if r.contains(*p) {
+            found.push(*p)
          }
       }
 
@@ -172,10 +86,10 @@ impl QTree {
 
    fn show(&self, show_points: bool) {
       draw_rectangle_lines(
-         self.boundary.x - self.boundary.w,
-         self.boundary.y - self.boundary.h,
-         self.boundary.w * 2.,
-         self.boundary.h * 2.,
+         self.boundary.x,
+         self.boundary.y,
+         self.boundary.w,
+         self.boundary.h,
          1.,
          GRAY,
       );
@@ -205,16 +119,16 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-   let boundary: Rect = Rect::new(300., 200., 300., 200.);
+   let boundary: Rect = Rect::new(0., 0., WIDTH as f32, HEIGHT as f32);
    let mut qt = QTree::new(boundary, 4);
    let show_points = true;
-   let mut collected: Vec<Point> = vec![];
+   let mut collected: Vec<Vec2> = vec![];
    let mut window_size = 50.;
    let mut queries: usize = 0;
 
    // fill qt with points
    for _ in 0..500 {
-      qt.insert(Point::new(
+      qt.insert(Vec2::new(
          rand::gen_range(50., WIDTH as f32 - 50.),
          rand::gen_range(50., HEIGHT as f32 - 50.),
       ));
@@ -230,23 +144,24 @@ async fn main() {
       }
 
       let (x, y) = mouse_position();
-      let region = Rect {
-         x,
-         y,
+      // put mouse pointer in center of region
+      let window = Rect {
+         x: x - window_size / 2.,
+         y: y - window_size / 2.,
          w: window_size as f32,
          h: window_size as f32,
       };
 
-      qt.query(&region, &mut collected, &mut queries);
+      qt.query(&window, &mut collected, &mut queries);
 
       clear_background(BLUE);
       draw_text(format!("Queries: {queries}").as_str(), 20., 20., 20., WHITE);
       qt.show(show_points);
       draw_rectangle_lines(
-         x - window_size,
-         y - window_size,
-         window_size * 2.,
-         window_size * 2.,
+         x - window_size / 2.,
+         y - window_size / 2.,
+         window_size,
+         window_size,
          2.,
          YELLOW,
       );
