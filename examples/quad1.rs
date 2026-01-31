@@ -6,7 +6,7 @@
 // SPACE toggles point visibility
 // ESC to quit
 
-use raylib::prelude::*;
+use macroquad::prelude::*;
 
 const WIDTH: i32 = 600;
 const HEIGHT: i32 = 400;
@@ -114,62 +114,66 @@ impl QTree {
       return false;
    }
 
-   fn show(&self, d: &mut RaylibDrawHandle, show_points: bool) {
-      d.draw_rectangle_lines(
-         (self.boundary.x - self.boundary.w) as i32,
-         (self.boundary.y - self.boundary.h) as i32,
-         self.boundary.w as i32 * 2,
-         self.boundary.h as i32 * 2,
-         Color::RAYWHITE,
+   fn show(&self, show_points: bool) {
+      draw_rectangle_lines(
+         self.boundary.x - self.boundary.w,
+         self.boundary.y - self.boundary.h,
+         self.boundary.w * 2.,
+         self.boundary.h * 2.,
+         1.,
+         WHITE,
       );
 
       if show_points {
          for p in &self.points {
-            d.draw_circle(p.x as i32, p.y as i32, 2., Color::RED);
+            draw_circle(p.x, p.y, 2., RED);
          }
       }
 
       if self.divided {
          for c in self.children.as_ref().unwrap().iter() {
-            c.show(d, show_points);
+            c.show(show_points);
          }
       }
    }
 }
 
-fn main() {
+fn window_conf() -> Conf {
+   Conf {
+      window_title: "QuadTree".to_owned(),
+      window_width: WIDTH,
+      window_height: HEIGHT,
+      ..Default::default()
+   }
+}
+
+#[macroquad::main(window_conf)]
+async fn main() {
    let boundary: Rect = Rect::new(300., 200., 300., 200.);
    let mut qt = QTree::new(boundary, 4);
    let mut show_points = true;
 
-   let (mut rl, thd) = raylib::init()
-      .width(WIDTH)
-      .height(HEIGHT)
-      .title("")
-      .log_level(TraceLogLevel::LOG_ERROR)
-      .build();
-
-   rl.set_target_fps(60);
-
-   while !rl.window_should_close() {
-      if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
+   loop {
+      if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
+         return;
+      }
+      if is_key_pressed(KeyCode::Space) {
          show_points = !show_points;
       }
 
-      if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-         let pos = rl.get_mouse_position();
+      if is_mouse_button_down(MouseButton::Left) {
+         let (x, y) = mouse_position();
          for _ in 0..4 {
             qt.insert(Point::new(
-               pos.x + rand::random_range(-10..10) as f32,
-               pos.y + rand::random_range(-10..10) as f32,
+               x + rand::gen_range::<f32>(-10., 10.),
+               y + rand::gen_range::<f32>(-10., 10.),
             ));
          }
       }
 
-      rl.draw(&thd, |mut d| {
-         d.clear_background(Color::MIDNIGHTBLUE);
-         d.draw_fps(20, 20);
-         qt.show(&mut d, show_points);
-      });
+      clear_background(BLUE);
+      qt.show(show_points);
+
+      next_frame().await
    }
 }
